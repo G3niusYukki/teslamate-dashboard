@@ -16,8 +16,8 @@ const CONFIG = {
   PROXY_ENDPOINT: "/api/proxy",
   // 如果你有自己的 Grafana 地址和 Token，直接改下面这两个默认值即可
   TESLAMATE_URL: process.env.NEXT_PUBLIC_GRAFANA_URL || "http://108.175.9.151:3001",
-  // 这里写死你的 Grafana API Token（如需更换，直接改这一行）
-  TOKEN: process.env.NEXT_PUBLIC_GRAFANA_TOKEN || "glsa_ahLNsZemMuXPekIjQ1vjwA8pqzKxREm2_d07ea710",
+  // Token 推荐放在后端（/api/proxy 或根目录 token 文件），这里默认留空，仅在直连模式使用
+  TOKEN: process.env.NEXT_PUBLIC_GRAFANA_TOKEN || "",
   // 这里使用你在 Grafana 里看到的 Data source UID
   DATASOURCE_UID: process.env.NEXT_PUBLIC_DATASOURCE_UID || "PC98BA2F4D77E1A42",
 };
