@@ -24,25 +24,40 @@ const CONFIG = {
 
 // --- Mock Data (Fallback) ---
 const MOCK_DRIVE_STATS = [
-  { day: 'Mon', miles: 45, kwh: 12 },
-  { day: 'Tue', miles: 32, kwh: 8.5 },
-  { day: 'Wed', miles: 58, kwh: 15.2 },
-  { day: 'Thu', miles: 12, kwh: 3.1 },
-  { day: 'Fri', miles: 89, kwh: 24.5 },
-  { day: 'Sat', miles: 120, kwh: 32.0 },
-  { day: 'Sun', miles: 65, kwh: 16.8 },
+  { day: 'Mon', distance: 45, energy: 12 },
+  { day: 'Tue', distance: 32, energy: 8.5 },
+  { day: 'Wed', distance: 58, energy: 15.2 },
+  { day: 'Thu', distance: 12, energy: 3.1 },
+  { day: 'Fri', distance: 89, energy: 24.5 },
+  { day: 'Sat', distance: 120, energy: 32.0 },
+  { day: 'Sun', distance: 65, energy: 16.8 },
 ];
 
-const MOCK_CHARGING_CURVE = Array.from({ length: 20 }, (_, i) => ({
-  time: `${i * 5}m`,
-  kw: i < 5 ? i * 20 : i > 15 ? 100 - (i - 15) * 15 : 120,
-  soc: 10 + i * 4
-}));
+const MOCK_CHARGING_HISTORY = [
+  { day: 'Mon', energy: 22, cost: 13.8 },
+  { day: 'Tue', energy: 8.4, cost: 5.1 },
+  { day: 'Wed', energy: 0, cost: 0 },
+  { day: 'Thu', energy: 15.2, cost: 9.4 },
+  { day: 'Fri', energy: 18.6, cost: 11.6 },
+  { day: 'Sat', energy: 25.1, cost: 14.2 },
+  { day: 'Sun', energy: 12.7, cost: 8.3 },
+];
 
 const RECENT_TRIPS = [
-  { id: 1, date: 'Today, 08:30 AM', from: 'Home', to: 'Office', distance: '15.2 km', duration: '24 min', efficiency: '145 Wh/km' },
-  { id: 2, date: 'Yesterday, 06:15 PM', from: 'Office', to: 'Supercharger', distance: '8.4 km', duration: '15 min', efficiency: '160 Wh/km' },
+  { id: 1, date: 'Today, 08:30 AM', from: 'Home', to: 'Office', distance: '15.2 km', duration: '24 min' },
+  { id: 2, date: 'Yesterday, 06:15 PM', from: 'Office', to: 'Supercharger', distance: '8.4 km', duration: '15 min' },
 ];
+
+const MOCK_CHARGES = [
+  { id: 1, started_at: 'Yesterday 21:08', energy: '26.3 kWh', cost: '¥ 15.8' },
+  { id: 2, started_at: '2 days ago 10:15', energy: '18.1 kWh', cost: '¥ 10.9' },
+];
+
+const DEFAULT_CHARGING_SUMMARY = {
+  energy: 0,
+  cost: 0,
+  costPerKwh: 0,
+};
 
 const DEFAULT_CAR_STATUS = {
   name: "Tesla Model 3",
@@ -104,6 +119,23 @@ const fetchGrafanaData = async (sqlString) => {
     console.error("Data Fetch Error:", error);
     throw error;
   }
+};
+
+const parseGrafanaRows = (result) => {
+  const frame = result?.results?.A?.frames?.[0];
+  const fields = frame?.schema?.fields || [];
+  const values = frame?.data?.values || [];
+
+  if (!fields.length || !values.length) return [];
+
+  const rowCount = values[0]?.length || 0;
+  return Array.from({ length: rowCount }, (_, rowIndex) => {
+    const row = {};
+    fields.forEach((field, colIdx) => {
+      row[field.name] = values[colIdx]?.[rowIndex];
+    });
+    return row;
+  });
 };
 
 // --- Components ---
@@ -197,106 +229,200 @@ const ProgressBar = ({ value, color = "bg-blue-500" }) => (
 );
 
 // --- Views (dashboard & charging only, like before) ---
-const DashboardView = ({ carStatus }) => (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    {/* Main Car Status */}
-    <div className="lg:col-span-2 relative h-80 rounded-3xl overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-black z-0" />
-      <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
-        <div className="w-96 h-96 bg-blue-500/20 rounded-full blur-[100px]" />
-      </div>
-      <div className="relative z-10 p-8 flex flex-col h-full justify-between">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">{carStatus.name}</h1>
-            <div className="flex items-center gap-2 mt-2">
-              <span className={`w-2 h-2 rounded-full ${carStatus.state === 'online' || carStatus.state === 'driving' ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`} />
-              <span className={`font-medium uppercase text-xs tracking-wider ${carStatus.state === 'online' || carStatus.state === 'driving' ? 'text-green-400' : 'text-zinc-500'}`}>{carStatus.state}</span>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-5xl font-bold text-white tracking-tighter">
-              {carStatus.batteryLevel}<span className="text-2xl text-zinc-500">%</span>
-            </div>
-            <div className="text-zinc-400 mt-1">{carStatus.range} Range</div>
-          </div>
-        </div>
+const DashboardView = ({ carStatus, driveStats, recentDrives, chargingHistory }) => {
+  const driveData = driveStats?.length ? driveStats : MOCK_DRIVE_STATS;
+  const tripData = recentDrives?.length ? recentDrives : RECENT_TRIPS;
+  const chargingData = chargingHistory?.length ? chargingHistory : MOCK_CHARGING_HISTORY;
 
-        <div className="grid grid-cols-4 gap-4 mt-8">
-          <StatBadge icon={Navigation} label="Odometer" value={carStatus.odometer} unit="" />
-          <StatBadge icon={Wind} label="Temp (In)" value={carStatus.inside_temp} unit="°C" />
-          <StatBadge icon={Settings} label="Version" value={carStatus.version} unit="" />
-          <StatBadge icon={MapPin} label="Location" value={carStatus.location} unit="" />
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Main Car Status */}
+      <div className="lg:col-span-2 relative h-80 rounded-3xl overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-black z-0" />
+        <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
+          <div className="w-96 h-96 bg-blue-500/20 rounded-full blur-[100px]" />
+        </div>
+        <div className="relative z-10 p-8 flex flex-col h-full justify-between">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-white tracking-tight">{carStatus.name}</h1>
+              <div className="flex items-center gap-2 mt-2">
+                <span className={`w-2 h-2 rounded-full ${carStatus.state === 'online' || carStatus.state === 'driving' ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`} />
+                <span className={`font-medium uppercase text-xs tracking-wider ${carStatus.state === 'online' || carStatus.state == 'driving' ? 'text-green-400' : 'text-zinc-500'}`}>{carStatus.state}</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-5xl font-bold text-white tracking-tighter">
+                {carStatus.batteryLevel}<span className="text-2xl text-zinc-500">%</span>
+              </div>
+              <div className="text-zinc-400 mt-1">{carStatus.range} Range</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-4 mt-8">
+            <StatBadge icon={Navigation} label="Odometer" value={carStatus.odometer} unit="" />
+            <StatBadge icon={Wind} label="Temp (In)" value={carStatus.inside_temp} unit="°C" />
+            <StatBadge icon={Settings} label="Version" value={carStatus.version} unit="" />
+            <StatBadge icon={MapPin} label="Location" value={carStatus.location} unit="" />
+          </div>
         </div>
       </div>
-    </div>
 
-    {/* Quick Stats */}
-    <div className="space-y-6">
-      <Card title="Battery Health" icon={Battery}>
-        <div className="mt-2">
-          <div className="flex justify-between mb-2">
-            <span className="text-zinc-300">Degradation</span>
-            <span className="text-green-400">2.4%</span>
-          </div>
-          <ProgressBar value={97.6} color="bg-green-500" />
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-zinc-500 text-xs">Usable</div>
-              <div className="text-zinc-200 text-lg font-medium">75.4 kWh</div>
+      {/* Quick Stats */}
+      <div className="space-y-6">
+        <Card title="Battery Health" icon={Battery}>
+          <div className="mt-2">
+            <div className="flex justify-between mb-2">
+              <span className="text-zinc-300">Degradation</span>
+              <span className="text-green-400">2.4%</span>
             </div>
-            <div>
-              <div className="text-zinc-500 text-xs">Nominal</div>
-              <div className="text-zinc-200 text-lg font-medium">78.0 kWh</div>
+            <ProgressBar value={97.6} color="bg-green-500" />
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-zinc-500 text-xs">Usable</div>
+                <div className="text-zinc-200 text-lg font-medium">75.4 kWh</div>
+              </div>
+              <div>
+                <div className="text-zinc-500 text-xs">Nominal</div>
+                <div className="text-zinc-200 text-lg font-medium">78.0 kWh</div>
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
-      <Card title="Efficiency (Last 7 Days)" icon={Activity}>
-        <div className="h-32 w-full mt-2">
+        </Card>
+        <Card title="Driving Distance (7d)" subtitle="Aggregated by day" icon={Activity}>
+          <div className="h-32 w-full mt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={driveData}>
+                <Line type="monotone" dataKey="distance" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
+                  itemStyle={{ color: '#e4e4e7' }}
+                  formatter={(value) => [`${value} km`, 'Distance']}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      {/* Recent Drives */}
+      <div className="lg:col-span-2">
+        <Card title="Recent Drives" subtitle="Latest trips from TeslaMate">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-zinc-400">
+              <thead className="border-b border-zinc-800">
+                <tr>
+                  <th className="pb-3 font-medium text-zinc-500 pl-2">Start</th>
+                  <th className="pb-3 font-medium text-zinc-500">Route</th>
+                  <th className="pb-3 font-medium text-zinc-500">Distance</th>
+                  <th className="pb-3 font-medium text-zinc-500 text-right pr-2">Duration</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {tripData.map((trip) => (
+                  <tr key={trip.id} className="group hover:bg-zinc-800/30 transition-colors">
+                    <td className="py-3 pl-2 text-zinc-300">{trip.date || trip.start_time}</td>
+                    <td className="py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-500">{trip.from || trip.start_address}</span>
+                        <ChevronRight size={12} className="text-zinc-600" />
+                        <span className="text-zinc-200">{trip.to || trip.end_address}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 text-zinc-300">{trip.distance || `${trip.distance_km ?? 0} km`}</td>
+                    <td className="py-3 text-right pr-2 text-zinc-300">{trip.duration || `${trip.duration_min ?? 0} min`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+
+      {/* Weekly Charging */}
+      <Card title="Charging (14d)" className="lg:col-span-1">
+        <div className="h-64 mt-4">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={MOCK_DRIVE_STATS}>
-              <Line type="monotone" dataKey="miles" stroke="#3b82f6" strokeWidth={3} dot={false} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
-                itemStyle={{ color: '#e4e4e7' }}
+            <BarChart data={chargingData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
+              <Tooltip
+                cursor={{fill: '#27272a'}}
+                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }}
+                formatter={(value) => [`${value} kWh`, 'Energy']}
               />
-            </LineChart>
+              <Bar dataKey="energy" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </Card>
     </div>
+  );
+};
 
-    {/* Recent Drives */}
-    <div className="lg:col-span-2">
-      <Card title="Recent Drives" subtitle="Last 48 hours activity">
+const ChargingView = ({ chargingSummary, chargingHistory, recentCharges }) => {
+  const summary = chargingSummary || DEFAULT_CHARGING_SUMMARY;
+  const history = chargingHistory?.length ? chargingHistory : MOCK_CHARGING_HISTORY;
+  const charges = recentCharges?.length ? recentCharges : MOCK_CHARGES;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="flex flex-col justify-center items-center py-8">
+          <div className="text-zinc-500 mb-2">Total Charged (30d)</div>
+          <div className="text-4xl font-bold text-white">{summary.energy.toFixed(1)} <span className="text-xl text-zinc-600 font-normal">kWh</span></div>
+        </Card>
+        <Card className="flex flex-col justify-center items-center py-8">
+          <div className="text-zinc-500 mb-2">Total Cost</div>
+          <div className="text-4xl font-bold text-white">¥ {summary.cost.toFixed(2)}</div>
+        </Card>
+        <Card className="flex flex-col justify-center items-center py-8">
+          <div className="text-zinc-500 mb-2">Avg. Cost/kWh</div>
+          <div className="text-4xl font-bold text-white">¥ {summary.costPerKwh.toFixed(2)}</div>
+        </Card>
+      </div>
+
+      <Card title="Charging Trend (14d)" subtitle="Energy & cost per day">
+        <div className="h-80 w-full mt-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={history}>
+              <defs>
+                <linearGradient id="chargeEnergy" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.35}/>
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#71717a'}} />
+              <YAxis axisLine={false} tickLine={false} tick={{fill: '#71717a'}} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a' }}
+                itemStyle={{ color: '#e4e4e7' }}
+                formatter={(value, name) => [name === 'cost' ? `¥ ${value}` : `${value} kWh`, name === 'cost' ? 'Cost' : 'Energy']}
+              />
+              <Area type="monotone" dataKey="energy" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#chargeEnergy)" />
+              <Line type="monotone" dataKey="cost" stroke="#3b82f6" strokeDasharray="5 5" dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card title="Recent Charging Sessions">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-zinc-400">
             <thead className="border-b border-zinc-800">
               <tr>
-                <th className="pb-3 font-medium text-zinc-500 pl-2">Time</th>
-                <th className="pb-3 font-medium text-zinc-500">Route</th>
-                <th className="pb-3 font-medium text-zinc-500">Distance</th>
-                <th className="pb-3 font-medium text-zinc-500">Duration</th>
-                <th className="pb-3 font-medium text-zinc-500 text-right pr-2">Eff.</th>
+                <th className="pb-3 font-medium text-zinc-500 pl-2">Started</th>
+                <th className="pb-3 font-medium text-zinc-500">Energy</th>
+                <th className="pb-3 font-medium text-zinc-500 text-right pr-2">Cost</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {RECENT_TRIPS.map((trip) => (
-                <tr key={trip.id} className="group hover:bg-zinc-800/30 transition-colors">
-                  <td className="py-3 pl-2 text-zinc-300">{trip.date}</td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-500">{trip.from}</span>
-                      <ChevronRight size={12} className="text-zinc-600" />
-                      <span className="text-zinc-200">{trip.to}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 text-zinc-300">{trip.distance}</td>
-                  <td className="py-3 text-zinc-300">{trip.duration}</td>
-                  <td className="py-3 text-right pr-2">
-                    <span className="bg-zinc-800 text-zinc-300 px-2 py-1 rounded text-xs">{trip.efficiency}</span>
-                  </td>
+              {charges.map((session) => (
+                <tr key={session.id} className="group hover:bg-zinc-800/30 transition-colors">
+                  <td className="py-3 pl-2 text-zinc-300">{session.started_at}</td>
+                  <td className="py-3 text-zinc-300">{session.energy !== undefined ? `${session.energy} kWh` : '—'}</td>
+                  <td className="py-3 text-right pr-2 text-zinc-300">{session.cost !== undefined ? `¥ ${session.cost}` : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -304,68 +430,8 @@ const DashboardView = ({ carStatus }) => (
         </div>
       </Card>
     </div>
-
-    {/* Weekly Charging */}
-    <Card title="Weekly Charging" className="lg:col-span-1">
-      <div className="h-64 mt-4">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={MOCK_DRIVE_STATS}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-            <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
-            <Tooltip 
-              cursor={{fill: '#27272a'}}
-              contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }}
-            />
-            <Bar dataKey="kwh" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </Card>
-  </div>
-);
-
-const ChargingView = () => (
-  <div className="space-y-6">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Card className="flex flex-col justify-center items-center py-8">
-        <div className="text-zinc-500 mb-2">Total Charged (30d)</div>
-        <div className="text-4xl font-bold text-white">425 <span className="text-xl text-zinc-600 font-normal">kWh</span></div>
-      </Card>
-      <Card className="flex flex-col justify-center items-center py-8">
-        <div className="text-zinc-500 mb-2">Total Cost</div>
-        <div className="text-4xl font-bold text-white">¥ 285.50</div>
-      </Card>
-      <Card className="flex flex-col justify-center items-center py-8">
-        <div className="text-zinc-500 mb-2">Avg. Cost/kWh</div>
-        <div className="text-4xl font-bold text-white">¥ 0.67</div>
-      </Card>
-    </div>
-
-    <Card title="Last Charge Session Analysis">
-      <div className="h-80 w-full mt-4">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={MOCK_CHARGING_CURVE}>
-            <defs>
-              <linearGradient id="colorKw" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-            <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#71717a'}} />
-            <YAxis axisLine={false} tickLine={false} tick={{fill: '#71717a'}} unit=" kW"/>
-            <Tooltip 
-              contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a' }}
-              itemStyle={{ color: '#e4e4e7' }}
-            />
-            <Area type="monotone" dataKey="kw" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorKw)" />
-            <Line type="monotone" dataKey="soc" stroke="#3b82f6" strokeDasharray="5 5" dot={false} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </Card>
-  </div>
-);
+  );
+};
 
 // --- Main Layout ---
 export default function App() {
@@ -373,12 +439,17 @@ export default function App() {
   const [carStatus, setCarStatus] = useState(DEFAULT_CAR_STATUS);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [connectionError, setConnectionError] = useState(null);
+  const [driveStats, setDriveStats] = useState(MOCK_DRIVE_STATS);
+  const [recentDrives, setRecentDrives] = useState(RECENT_TRIPS);
+  const [chargingHistory, setChargingHistory] = useState(MOCK_CHARGING_HISTORY);
+  const [chargingSummary, setChargingSummary] = useState(DEFAULT_CHARGING_SUMMARY);
+  const [recentCharges, setRecentCharges] = useState(MOCK_CHARGES);
 
   useEffect(() => {
     async function loadData() {
       setConnectionStatus('connecting');
-      const sql = `
-        SELECT 
+      const carSql = `
+        SELECT
           c.name,
           p.battery_level,
           p.est_battery_range_km,
@@ -386,16 +457,16 @@ export default function App() {
           p.speed,
           p.inside_temp,
           p.outside_temp,
-          CASE 
-              WHEN p.date > (NOW() - INTERVAL '2 minutes') THEN 'online' 
-              ELSE 'asleep' 
+          CASE
+              WHEN p.date > (NOW() - INTERVAL '2 minutes') THEN 'online'
+              ELSE 'asleep'
           END as status
         FROM cars c
         JOIN positions p ON p.car_id = c.id
         ORDER BY p.date DESC LIMIT 1;
       `;
       try {
-        const result = await fetchGrafanaData(sql);
+        const result = await fetchGrafanaData(carSql);
         const frame = result?.results?.A?.frames?.[0];
         const values = frame?.data?.values;
         if (values) {
@@ -437,6 +508,142 @@ export default function App() {
           state: "online"
         });
       }
+
+      const driveStatsSql = `
+        SELECT
+          to_char(date_trunc('day', start_date), 'Mon DD') AS day,
+          ROUND(SUM(distance), 1) AS distance
+        FROM drives
+        WHERE start_date >= NOW() - INTERVAL '7 days'
+        GROUP BY 1
+        ORDER BY date_trunc('day', start_date);
+      `;
+
+      const recentDrivesSql = `
+        SELECT
+          d.id,
+          to_char(d.start_date, 'YYYY-MM-DD HH24:MI') AS start_time,
+          COALESCE(a1.name, 'Unknown') AS start_address,
+          COALESCE(a2.name, 'Unknown') AS end_address,
+          ROUND(d.distance, 1) AS distance_km,
+          ROUND(d.duration_min, 0) AS duration_min
+        FROM drives d
+        LEFT JOIN addresses a1 ON d.start_address_id = a1.id
+        LEFT JOIN addresses a2 ON d.end_address_id = a2.id
+        ORDER BY d.start_date DESC
+        LIMIT 6;
+      `;
+
+      const chargingSummarySql = `
+        SELECT
+          ROUND(COALESCE(SUM(cp.charge_energy_added), 0), 1) AS energy,
+          ROUND(COALESCE(SUM(cp.cost), 0), 2) AS cost,
+          ROUND(COALESCE(SUM(cp.cost) / NULLIF(SUM(cp.charge_energy_added), 0), 0), 2) AS cost_per_kwh
+        FROM charging_processes cp
+        WHERE cp.start_date >= NOW() - INTERVAL '30 days';
+      `;
+
+      const chargingHistorySql = `
+        SELECT
+          to_char(date_trunc('day', start_date), 'Mon DD') AS day,
+          ROUND(SUM(charge_energy_added), 1) AS energy,
+          ROUND(SUM(cost), 2) AS cost
+        FROM charging_processes
+        WHERE start_date >= NOW() - INTERVAL '14 days'
+        GROUP BY 1
+        ORDER BY date_trunc('day', start_date);
+      `;
+
+      const recentChargesSql = `
+        SELECT
+          cp.id,
+          to_char(cp.start_date, 'YYYY-MM-DD HH24:MI') AS started_at,
+          ROUND(cp.charge_energy_added, 1) AS energy,
+          COALESCE(cp.cost, 0) AS cost
+        FROM charging_processes cp
+        ORDER BY cp.start_date DESC
+        LIMIT 5;
+      `;
+
+      try {
+        const driveRows = parseGrafanaRows(await fetchGrafanaData(driveStatsSql));
+        if (driveRows.length) {
+          setDriveStats(
+            driveRows.map((row, idx) => ({
+              id: row.id ?? idx,
+              day: row.day || row.day_label,
+              distance: Number(row.distance || row.distance_km || 0),
+              energy: Number(row.energy || 0)
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn('Drive stats fallback', err);
+      }
+
+      try {
+        const tripRows = parseGrafanaRows(await fetchGrafanaData(recentDrivesSql));
+        if (tripRows.length) {
+          setRecentDrives(
+            tripRows.map((row) => ({
+              id: row.id,
+              start_time: row.start_time,
+              start_address: row.start_address,
+              end_address: row.end_address,
+              distance_km: Number(row.distance_km || 0),
+              duration_min: Number(row.duration_min || 0)
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn('Recent drives fallback', err);
+      }
+
+      try {
+        const summaryRows = parseGrafanaRows(await fetchGrafanaData(chargingSummarySql));
+        const summaryRow = summaryRows[0];
+        if (summaryRow) {
+          setChargingSummary({
+            energy: Number(summaryRow.energy || 0),
+            cost: Number(summaryRow.cost || 0),
+            costPerKwh: Number(summaryRow.cost_per_kwh || 0),
+          });
+        }
+      } catch (err) {
+        console.warn('Charging summary fallback', err);
+      }
+
+      try {
+        const historyRows = parseGrafanaRows(await fetchGrafanaData(chargingHistorySql));
+        if (historyRows.length) {
+          setChargingHistory(
+            historyRows.map((row, idx) => ({
+              id: row.id ?? idx,
+              day: row.day,
+              energy: Number(row.energy || 0),
+              cost: Number(row.cost || 0),
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn('Charging history fallback', err);
+      }
+
+      try {
+        const chargesRows = parseGrafanaRows(await fetchGrafanaData(recentChargesSql));
+        if (chargesRows.length) {
+          setRecentCharges(
+            chargesRows.map((row) => ({
+              id: row.id,
+              started_at: row.started_at,
+              energy: Number(row.energy || 0),
+              cost: Number(row.cost || 0),
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn('Recent charges fallback', err);
+      }
     }
 
     loadData();
@@ -457,6 +664,8 @@ export default function App() {
       <span>{label}</span>
     </button>
   );
+
+  const proxyLabel = CONFIG.USE_PROXY ? 'Proxy Mode: ON' : 'Proxy Mode: OFF';
 
   return (
     <div className="min-h-screen bg-black text-zinc-100">
@@ -491,13 +700,26 @@ export default function App() {
             <div className="flex items-center gap-4">
               <ConnectionStatus status={connectionStatus} error={connectionError} />
               <span className="text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-1 rounded border border-zinc-800 hidden md:block">
-                Proxy Mode: ON
+                {proxyLabel}
               </span>
             </div>
           </header>
 
-          {activeTab === 'dashboard' && <DashboardView carStatus={carStatus} />}
-          {activeTab === 'charging' && <ChargingView />}
+          {activeTab === 'dashboard' && (
+            <DashboardView
+              carStatus={carStatus}
+              driveStats={driveStats}
+              recentDrives={recentDrives}
+              chargingHistory={chargingHistory}
+            />
+          )}
+          {activeTab === 'charging' && (
+            <ChargingView
+              chargingSummary={chargingSummary}
+              chargingHistory={chargingHistory}
+              recentCharges={recentCharges}
+            />
+          )}
         </main>
       </div>
     </div>
