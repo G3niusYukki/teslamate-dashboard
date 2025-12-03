@@ -1,11 +1,5 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "functions": {
-    "app/api/**/route.ts": {
-      "runtime": "nodejs18.x",
-      "maxDuration": 10
-    }
-  }
+  "buildCommand": "npm run build"
 }
