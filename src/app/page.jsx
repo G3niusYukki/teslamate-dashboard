@@ -84,7 +84,7 @@ const translations = {
       proxyLabel: 'Proxy Mode',
       helpSteps: [
         'The Token provided is incorrect or expired.',
-        `Go to Grafana (${CONFIG.TESLAMATE_URL})`,
+        'Open your Grafana instance',
         'Navigate to Configuration -> Service Accounts',
         'Create a new Service Account & Token',
         'Update NEXT_PUBLIC_GRAFANA_TOKEN in .env.local',
@@ -164,7 +164,7 @@ const translations = {
       proxyLabel: '代理模式',
       helpSteps: [
         '提供的 Token 不正确或已失效。',
-        `前往 Grafana (${CONFIG.TESLAMATE_URL})`,
+        '前往你的 Grafana 实例',
         '进入 Configuration -> Service Accounts',
         '创建新的 Service Account 与 Token',
         '更新 .env.local 中的 NEXT_PUBLIC_GRAFANA_TOKEN',
