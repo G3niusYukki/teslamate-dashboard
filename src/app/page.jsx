@@ -22,37 +22,6 @@ const CONFIG = {
   DATASOURCE_UID: process.env.NEXT_PUBLIC_DATASOURCE_UID || "PC98BA2F4D77E1A42",
 };
 
-// --- Mock Data (Fallback) ---
-const MOCK_DRIVE_STATS = [
-  { day: 'Mon', distance: 45, energy: 12 },
-  { day: 'Tue', distance: 32, energy: 8.5 },
-  { day: 'Wed', distance: 58, energy: 15.2 },
-  { day: 'Thu', distance: 12, energy: 3.1 },
-  { day: 'Fri', distance: 89, energy: 24.5 },
-  { day: 'Sat', distance: 120, energy: 32.0 },
-  { day: 'Sun', distance: 65, energy: 16.8 },
-];
-
-const MOCK_CHARGING_HISTORY = [
-  { day: 'Mon', energy: 22, cost: 13.8 },
-  { day: 'Tue', energy: 8.4, cost: 5.1 },
-  { day: 'Wed', energy: 0, cost: 0 },
-  { day: 'Thu', energy: 15.2, cost: 9.4 },
-  { day: 'Fri', energy: 18.6, cost: 11.6 },
-  { day: 'Sat', energy: 25.1, cost: 14.2 },
-  { day: 'Sun', energy: 12.7, cost: 8.3 },
-];
-
-const RECENT_TRIPS = [
-  { id: 1, date: 'Today, 08:30 AM', from: 'Home', to: 'Office', distance: '15.2 km', duration: '24 min' },
-  { id: 2, date: 'Yesterday, 06:15 PM', from: 'Office', to: 'Supercharger', distance: '8.4 km', duration: '15 min' },
-];
-
-const MOCK_CHARGES = [
-  { id: 1, started_at: 'Yesterday 21:08', energy: '26.3 kWh', cost: '¥ 15.8' },
-  { id: 2, started_at: '2 days ago 10:15', energy: '18.1 kWh', cost: '¥ 10.9' },
-];
-
 const DEFAULT_CHARGING_SUMMARY = {
   energy: 0,
   cost: 0,
@@ -230,9 +199,9 @@ const ProgressBar = ({ value, color = "bg-blue-500" }) => (
 
 // --- Views (dashboard & charging only, like before) ---
 const DashboardView = ({ carStatus, driveStats, recentDrives, chargingHistory }) => {
-  const driveData = driveStats?.length ? driveStats : MOCK_DRIVE_STATS;
-  const tripData = recentDrives?.length ? recentDrives : RECENT_TRIPS;
-  const chargingData = chargingHistory?.length ? chargingHistory : MOCK_CHARGING_HISTORY;
+  const driveData = driveStats || [];
+  const tripData = recentDrives || [];
+  const chargingData = chargingHistory || [];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -291,16 +260,20 @@ const DashboardView = ({ carStatus, driveStats, recentDrives, chargingHistory })
         </Card>
         <Card title="Driving Distance (7d)" subtitle="Aggregated by day" icon={Activity}>
           <div className="h-32 w-full mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={driveData}>
-                <Line type="monotone" dataKey="distance" stroke="#3b82f6" strokeWidth={3} dot={false} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
-                  itemStyle={{ color: '#e4e4e7' }}
-                  formatter={(value) => [`${value} km`, 'Distance']}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {driveData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={driveData}>
+                  <Line type="monotone" dataKey="distance" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
+                    itemStyle={{ color: '#e4e4e7' }}
+                    formatter={(value) => [`${value} km`, 'Distance']}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-zinc-500">No drive data available</div>
+            )}
           </div>
         </Card>
       </div>
@@ -319,20 +292,26 @@ const DashboardView = ({ carStatus, driveStats, recentDrives, chargingHistory })
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {tripData.map((trip) => (
-                  <tr key={trip.id} className="group hover:bg-zinc-800/30 transition-colors">
-                    <td className="py-3 pl-2 text-zinc-300">{trip.date || trip.start_time}</td>
-                    <td className="py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-zinc-500">{trip.from || trip.start_address}</span>
-                        <ChevronRight size={12} className="text-zinc-600" />
-                        <span className="text-zinc-200">{trip.to || trip.end_address}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 text-zinc-300">{trip.distance || `${trip.distance_km ?? 0} km`}</td>
-                    <td className="py-3 text-right pr-2 text-zinc-300">{trip.duration || `${trip.duration_min ?? 0} min`}</td>
+                {tripData.length ? (
+                  tripData.map((trip) => (
+                    <tr key={trip.id} className="group hover:bg-zinc-800/30 transition-colors">
+                      <td className="py-3 pl-2 text-zinc-300">{trip.date || trip.start_time}</td>
+                      <td className="py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-zinc-500">{trip.from || trip.start_address}</span>
+                          <ChevronRight size={12} className="text-zinc-600" />
+                          <span className="text-zinc-200">{trip.to || trip.end_address}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 text-zinc-300">{trip.distance || `${trip.distance_km ?? 0} km`}</td>
+                      <td className="py-3 text-right pr-2 text-zinc-300">{trip.duration || `${trip.duration_min ?? 0} min`}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center text-zinc-500">No trips found</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -342,18 +321,22 @@ const DashboardView = ({ carStatus, driveStats, recentDrives, chargingHistory })
       {/* Weekly Charging */}
       <Card title="Charging (14d)" className="lg:col-span-1">
         <div className="h-64 mt-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chargingData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
-              <Tooltip
-                cursor={{fill: '#27272a'}}
-                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }}
-                formatter={(value) => [`${value} kWh`, 'Energy']}
-              />
-              <Bar dataKey="energy" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
-            </BarChart>
-          </ResponsiveContainer>
+          {chargingData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chargingData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
+                <Tooltip
+                  cursor={{fill: '#27272a'}}
+                  contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }}
+                  formatter={(value) => [`${value} kWh`, 'Energy']}
+                />
+                <Bar dataKey="energy" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-zinc-500">No charging data available</div>
+          )}
         </div>
       </Card>
     </div>
@@ -362,8 +345,8 @@ const DashboardView = ({ carStatus, driveStats, recentDrives, chargingHistory })
 
 const ChargingView = ({ chargingSummary, chargingHistory, recentCharges }) => {
   const summary = chargingSummary || DEFAULT_CHARGING_SUMMARY;
-  const history = chargingHistory?.length ? chargingHistory : MOCK_CHARGING_HISTORY;
-  const charges = recentCharges?.length ? recentCharges : MOCK_CHARGES;
+  const history = chargingHistory || [];
+  const charges = recentCharges || [];
 
   return (
     <div className="space-y-6">
@@ -384,26 +367,30 @@ const ChargingView = ({ chargingSummary, chargingHistory, recentCharges }) => {
 
       <Card title="Charging Trend (14d)" subtitle="Energy & cost per day">
         <div className="h-80 w-full mt-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={history}>
-              <defs>
-                <linearGradient id="chargeEnergy" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#71717a'}} />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#71717a'}} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a' }}
-                itemStyle={{ color: '#e4e4e7' }}
-                formatter={(value, name) => [name === 'cost' ? `¥ ${value}` : `${value} kWh`, name === 'cost' ? 'Cost' : 'Energy']}
-              />
-              <Area type="monotone" dataKey="energy" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#chargeEnergy)" />
-              <Line type="monotone" dataKey="cost" stroke="#3b82f6" strokeDasharray="5 5" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
+          {history.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={history}>
+                <defs>
+                  <linearGradient id="chargeEnergy" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.35}/>
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#71717a'}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#71717a'}} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a' }}
+                  itemStyle={{ color: '#e4e4e7' }}
+                  formatter={(value, name) => [name === 'cost' ? `¥ ${value}` : `${value} kWh`, name === 'cost' ? 'Cost' : 'Energy']}
+                />
+                <Area type="monotone" dataKey="energy" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#chargeEnergy)" />
+                <Line type="monotone" dataKey="cost" stroke="#3b82f6" strokeDasharray="5 5" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-zinc-500">No charging history found</div>
+          )}
         </div>
       </Card>
 
@@ -418,13 +405,19 @@ const ChargingView = ({ chargingSummary, chargingHistory, recentCharges }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {charges.map((session) => (
-                <tr key={session.id} className="group hover:bg-zinc-800/30 transition-colors">
-                  <td className="py-3 pl-2 text-zinc-300">{session.started_at}</td>
-                  <td className="py-3 text-zinc-300">{session.energy !== undefined ? `${session.energy} kWh` : '—'}</td>
-                  <td className="py-3 text-right pr-2 text-zinc-300">{session.cost !== undefined ? `¥ ${session.cost}` : '—'}</td>
+              {charges.length ? (
+                charges.map((session) => (
+                  <tr key={session.id} className="group hover:bg-zinc-800/30 transition-colors">
+                    <td className="py-3 pl-2 text-zinc-300">{session.started_at}</td>
+                    <td className="py-3 text-zinc-300">{session.energy !== undefined ? `${session.energy} kWh` : '—'}</td>
+                    <td className="py-3 text-right pr-2 text-zinc-300">{session.cost !== undefined ? `¥ ${session.cost}` : '—'}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={3} className="py-4 text-center text-zinc-500">No charging sessions found</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -439,11 +432,11 @@ export default function App() {
   const [carStatus, setCarStatus] = useState(DEFAULT_CAR_STATUS);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [connectionError, setConnectionError] = useState(null);
-  const [driveStats, setDriveStats] = useState(MOCK_DRIVE_STATS);
-  const [recentDrives, setRecentDrives] = useState(RECENT_TRIPS);
-  const [chargingHistory, setChargingHistory] = useState(MOCK_CHARGING_HISTORY);
+  const [driveStats, setDriveStats] = useState([]);
+  const [recentDrives, setRecentDrives] = useState([]);
+  const [chargingHistory, setChargingHistory] = useState([]);
   const [chargingSummary, setChargingSummary] = useState(DEFAULT_CHARGING_SUMMARY);
-  const [recentCharges, setRecentCharges] = useState(MOCK_CHARGES);
+  const [recentCharges, setRecentCharges] = useState([]);
 
   useEffect(() => {
     async function loadData() {
@@ -502,10 +495,7 @@ export default function App() {
         setConnectionStatus('error');
         setCarStatus({
           ...DEFAULT_CAR_STATUS,
-          name: "Model 3 (Mock)",
-          batteryLevel: 78,
-          range: "385 km",
-          state: "online"
+          state: "offline",
         });
       }
 
