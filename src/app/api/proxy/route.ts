@@ -38,11 +38,11 @@ export async function POST(request: Request) {
 
     // 写死的默认配置（可以根据需要直接改成你自己的）
     const grafanaUrl =
-      process.env.NEXT_PUBLIC_GRAFANA_URL || "http://108.175.9.151:3001";
+      process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001";
     const token = resolveToken();
     // 使用你给出的 UID，确保能找到正确的数据源
     const datasourceUid =
-      process.env.NEXT_PUBLIC_DATASOURCE_UID || "PC98BA2F4D77E1A42";
+      process.env.NEXT_PUBLIC_DATASOURCE_UID || "YOUR_DATASOURCE_UID";
 
     if (!grafanaUrl) {
       return NextResponse.json(
