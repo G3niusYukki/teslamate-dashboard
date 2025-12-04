@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     const { sql, config } = body;
 
     // 优先使用前端传入的配置，如果没有则回退到环境变量
-    const grafanaUrl = 
+    let grafanaUrl = 
       config?.grafanaUrl || process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001";
     
     // Token 处理：前端传入 -> 环境变量 -> 文件
@@ -70,8 +70,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // 移除末尾可能的斜杠，避免双斜杠问题
+    // --- 数据清理 (Sanitization) ---
+    // 1. URL: 移除末尾斜杠
     const cleanUrl = grafanaUrl.replace(/\/+$/, "");
+    
+    // 2. Token: 移除首尾空格，如果用户不小心填了 "Bearer " 前缀，自动去掉
+    let cleanToken = token.trim();
+    if (cleanToken.toLowerCase().startsWith('bearer ')) {
+        cleanToken = cleanToken.substring(7).trim();
+    }
+
     const upstreamUrl = `${cleanUrl}/api/ds/query`;
 
     const payload = {
@@ -88,16 +96,13 @@ export async function POST(request: Request) {
       to: "now"
     };    
 
-    // console.log(`[Proxy] Forwarding SQL to: ${upstreamUrl}`);
+    // console.log(`[Proxy] Forwarding to: ${upstreamUrl} with Token: ${cleanToken.substring(0, 5)}...`);
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Accept": "application/json",
+      "Authorization": `Bearer ${cleanToken}` // 确保只有这里添加 Bearer
     };
-
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
 
     const upstreamResp = await fetch(upstreamUrl, {
       method: "POST",
@@ -108,6 +113,15 @@ export async function POST(request: Request) {
     if (!upstreamResp.ok) {
       const text = await upstreamResp.text();
       console.error("[Proxy] Upstream Error:", upstreamResp.status, text);
+      
+      // 针对 401 做更友好的错误提示
+      if (upstreamResp.status === 401) {
+          return NextResponse.json(
+            { error: `Grafana Auth Failed (401). Check if Token matches Server URL.`, details: text },
+            { status: 401 },
+          );
+      }
+
       return NextResponse.json(
         { error: `Grafana Error (${upstreamResp.status})`, details: text },
         { status: upstreamResp.status },
