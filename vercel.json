@@ -1,6 +1,11 @@
 {
-  "version": 2,
   "framework": "nextjs",
-  "installCommand": "npm ci",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "functions": {
+    "app/api/**/route.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 10
+    }
+  }
 }
