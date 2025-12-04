@@ -453,7 +453,7 @@ const DashboardView = ({ carStatus, driveStats, recentDrives, chargingHistory, t
             <StatBadge icon={Navigation} label={translate('labels.odometer')} value={carStatus.odometer} unit="" />
             <StatBadge icon={Wind} label={translate('labels.tempIn')} value={carStatus.inside_temp} unit="°C" />
             <StatBadge icon={Settings} label={translate('labels.version')} value={carStatus.version} unit="" />
-            <StatBadge icon={MapPin} label={translate('cards.location')} value={carStatus.location} unit="" />
+            <StatBadge icon={MapPin} label={translate('cards.location')} value={carStatus.location || 'Unknown'} unit="" />
           </div>
         </div>
       </div>
@@ -681,12 +681,24 @@ export default function App() {
         return;
       }
 
+      // 修复：改用 geofences 表替代 addresses 表，因为旧版 positions 表没有 address_id
       const carSql = `
-        SELECT c.name, p.battery_level, p.est_battery_range_km, p.odometer, p.speed, p.inside_temp, p.outside_temp, a.name as location,
-          CASE WHEN p.date > (NOW() - INTERVAL '2 minutes') THEN 'online' ELSE 'asleep' END as status
+        SELECT
+          c.name,
+          p.battery_level,
+          p.est_battery_range_km,
+          p.odometer,
+          p.speed,
+          p.inside_temp,
+          p.outside_temp,
+          g.name as location,
+          CASE
+              WHEN p.date > (NOW() - INTERVAL '2 minutes') THEN 'online'
+              ELSE 'asleep'
+          END as status
         FROM cars c
         JOIN positions p ON p.car_id = c.id
-        LEFT JOIN addresses a ON p.address_id = a.id
+        LEFT JOIN geofences g ON p.geofence_id = g.id
         ORDER BY p.date DESC LIMIT 1;
       `;
 
