@@ -4,6 +4,11 @@ import { NextResponse } from 'next/server';
 
 interface ProxyBody {
   sql: string;
+  config?: {
+    grafanaUrl?: string;
+    token?: string;
+    datasourceUid?: string;
+  }
 }
 
 function readTokenFromFile(): string {
@@ -34,19 +39,24 @@ function resolveToken(): string {
 export async function POST(request: Request) {
   try {
     const body: ProxyBody = await request.json();
-    const { sql } = body;
+    const { sql, config } = body;
 
-    // 写死的默认配置（可以根据需要直接改成你自己的）
-    const grafanaUrl =
-      process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001";
-    const token = resolveToken();
-    // 使用你给出的 UID，确保能找到正确的数据源
-    const datasourceUid =
-      process.env.NEXT_PUBLIC_DATASOURCE_UID || "YOUR_DATASOURCE_UID";
+    // 优先使用前端传入的配置，如果没有则回退到环境变量
+    const grafanaUrl = 
+      config?.grafanaUrl || process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001";
+    
+    // Token 处理：前端传入 -> 环境变量 -> 文件
+    let token = config?.token;
+    if (!token) {
+        token = resolveToken();
+    }
+
+    const datasourceUid = 
+      config?.datasourceUid || process.env.NEXT_PUBLIC_DATASOURCE_UID || "YOUR_DATASOURCE_UID";
 
     if (!grafanaUrl) {
       return NextResponse.json(
-        { error: "Missing Grafana URL, please set grafanaUrl in proxy route" },
+        { error: "Missing Grafana URL. Please set it in Settings or Env Vars." },
         { status: 500 },
       );
     }
@@ -54,14 +64,15 @@ export async function POST(request: Request) {
     if (!token) {
       return NextResponse.json(
         {
-          error:
-            "Missing Grafana token. Please set NEXT_PUBLIC_GRAFANA_TOKEN or place it in a token/token.txt file.",
+          error: "Missing Grafana Token. Please set it in Settings or Env Vars.",
         },
         { status: 500 },
       );
     }
 
-    const upstreamUrl = `${grafanaUrl}/api/ds/query`;
+    // 移除末尾可能的斜杠，避免双斜杠问题
+    const cleanUrl = grafanaUrl.replace(/\/+$/, "");
+    const upstreamUrl = `${cleanUrl}/api/ds/query`;
 
     const payload = {
       queries: [
@@ -69,7 +80,7 @@ export async function POST(request: Request) {
           refId: "A",
           datasource: { type: "postgres", uid: datasourceUid },
           rawSql: sql,
-          rawQuery: true,      // ⭐️ 必须加
+          rawQuery: true,
           format: "table"
         }
       ],
@@ -77,14 +88,13 @@ export async function POST(request: Request) {
       to: "now"
     };    
 
-    console.log(`[Proxy] Forwarding SQL to: ${upstreamUrl}`);
+    // console.log(`[Proxy] Forwarding SQL to: ${upstreamUrl}`);
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Accept": "application/json",
     };
 
-    // 只有设置了 token 才带 Authorization 头，方便无鉴权 Grafana 使用
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
@@ -99,7 +109,7 @@ export async function POST(request: Request) {
       const text = await upstreamResp.text();
       console.error("[Proxy] Upstream Error:", upstreamResp.status, text);
       return NextResponse.json(
-        { error: `Upstream Grafana Error: ${upstreamResp.status}`, details: text },
+        { error: `Grafana Error (${upstreamResp.status})`, details: text },
         { status: upstreamResp.status },
       );
     }
