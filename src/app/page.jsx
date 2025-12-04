@@ -1,25 +1,49 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
 } from 'recharts';
-import { 
-  Zap, Battery, BatteryCharging, Navigation, MapPin, 
-  Settings, ChevronRight, Wind, Activity,
-  Layers, Wifi, AlertTriangle, RefreshCw, Server, Lock
+import {
+  Zap,
+  Battery,
+  BatteryCharging,
+  Navigation,
+  MapPin,
+  Settings,
+  ChevronRight,
+  Wind,
+  Activity,
+  Layers,
+  Wifi,
+  AlertTriangle,
+  RefreshCw,
+  Server,
+  Lock,
+  Car,
+  Gauge,
+  Map,
+  Route,
+  ShieldCheck,
+  Calendar,
 } from 'lucide-react';
 
-// --- Configuration (hard-coded defaults, can be overridden by env) ---
 const CONFIG = {
   USE_PROXY: true,
-  PROXY_ENDPOINT: "/api/proxy",
-  // 如果你有自己的 Grafana 地址和 Token，直接改下面这两个默认值即可
-  TESLAMATE_URL: process.env.NEXT_PUBLIC_GRAFANA_URL || "http://108.175.9.151:3001",
-  // 这里写死你的 Grafana API Token（如需更换，直接改这一行）
-  TOKEN: process.env.NEXT_PUBLIC_GRAFANA_TOKEN || "glsa_ahLNsZemMuXPekIjQ1vjwA8pqzKxREm2_d07ea710",
-  // 这里使用你在 Grafana 里看到的 Data source UID
-  DATASOURCE_UID: process.env.NEXT_PUBLIC_DATASOURCE_UID || "PC98BA2F4D77E1A42",
+  PROXY_ENDPOINT: '/api/proxy',
+  TESLAMATE_URL: process.env.NEXT_PUBLIC_GRAFANA_URL || 'http://localhost:3001',
+  TOKEN: process.env.NEXT_PUBLIC_GRAFANA_TOKEN || '',
+  DATASOURCE_UID: process.env.NEXT_PUBLIC_DATASOURCE_UID || 'YOUR_DATASOURCE_UID',
 };
 
 // --- Mock Data (Fallback) ---
@@ -60,19 +84,181 @@ const DEFAULT_CHARGING_SUMMARY = {
 };
 
 const DEFAULT_CAR_STATUS = {
-  name: "Tesla Model 3",
-  state: "offline",
+  name: 'Tesla Model 3',
+  state: 'offline',
   batteryLevel: 0,
-  range: "0 km",
-  odometer: "0 km",
-  version: "---",
-  location: "Unknown",
+  range: '0 km',
+  odometer: '0 km',
+  version: '---',
+  location: 'Unknown',
   speed: 0,
   inside_temp: 0,
-  outside_temp: 0
+  outside_temp: 0,
 };
 
-// --- API Utilities ---
+const translations = {
+  en: {
+    brand: 'TeslaMate',
+    frameworkSubtitle: 'Vehicle overview powered by TeslaMate',
+    nav: {
+      dashboard: 'Dashboard',
+      charging: 'Charging',
+    },
+    connection: {
+      connected: 'Connected',
+      on: 'On',
+      connecting: 'Connecting...',
+      authFailed: 'Auth Failed',
+      failed: 'Connection Failed',
+      authTitle: 'Authentication Error',
+      errorTitle: 'Connection Error',
+      proxyLabel: 'Proxy Mode',
+      helpSteps: [
+        'The Token provided is incorrect or expired.',
+        'Open your Grafana instance',
+        'Navigate to Configuration -> Service Accounts',
+        'Create a new Service Account & Token',
+        'Update NEXT_PUBLIC_GRAFANA_TOKEN in .env.local',
+      ],
+      networkHint: 'Check your network connection to',
+    },
+    quickActionsTitle: 'Actions',
+    quickActions: [
+      { id: 'drives', label: 'Drive logs', icon: Route },
+      { id: 'charges', label: 'Charging logs', icon: BatteryCharging },
+      { id: 'tracks', label: 'Map tracks', icon: Map },
+      { id: 'alerts', label: 'Alerts & errors', icon: AlertTriangle },
+      { id: 'journey', label: 'Trip journal', icon: Navigation },
+      { id: 'battery', label: 'Battery health', icon: Battery },
+      { id: 'tires', label: 'Tire & safety', icon: ShieldCheck },
+      { id: 'stats', label: 'Driving stats', icon: Gauge },
+    ],
+    cards: {
+      batteryStatus: 'Battery status',
+      range: 'Estimated range',
+      state: 'Vehicle state',
+      location: 'Location',
+      inside: 'Cabin',
+      outside: 'Exterior',
+      monthlyMileage: 'Monthly mileage',
+      thisMonth: 'This month',
+      lastMonth: 'Last month',
+      latestTrip: 'Recent trip',
+      latestCharge: 'Recent charge',
+      distance: 'Distance',
+      duration: 'Duration',
+      started: 'Started',
+      energy: 'Energy',
+      cost: 'Cost',
+      noTrip: 'No trips found',
+      noCharge: 'No charging sessions found',
+      driveDistance: 'Driving distance (7d)',
+      chargingTrend: 'Charging trend (14d)',
+      recentDrives: 'Recent drives',
+      chargingSessions: 'Recent charging sessions',
+    },
+    empty: {
+      noDriveData: 'No drive data available',
+      noTrips: 'No trips found',
+      noCharging: 'No charging data available',
+      noChargingHistory: 'No charging history found',
+    },
+    buttons: {
+      language: '中文 / EN',
+    },
+    labels: {
+      route: 'Route',
+      odometer: 'Odometer',
+      version: 'Version',
+      speed: 'Speed',
+      km: 'km',
+      min: 'min',
+      kwh: 'kWh',
+      currency: '¥',
+    },
+  },
+  zh: {
+    brand: '特斯拉管家',
+    frameworkSubtitle: '基于 TeslaMate 的车辆概览',
+    nav: {
+      dashboard: '驾驶概览',
+      charging: '充电分析',
+    },
+    connection: {
+      connected: '已连接',
+      on: '在线',
+      connecting: '连接中...',
+      authFailed: '认证失败',
+      failed: '连接异常',
+      authTitle: '认证错误',
+      errorTitle: '连接错误',
+      proxyLabel: '代理模式',
+      helpSteps: [
+        '提供的 Token 不正确或已失效。',
+        '前往你的 Grafana 实例',
+        '进入 Configuration -> Service Accounts',
+        '创建新的 Service Account 与 Token',
+        '更新 .env.local 中的 NEXT_PUBLIC_GRAFANA_TOKEN',
+      ],
+      networkHint: '检查到以下地址的网络连接',
+    },
+    quickActionsTitle: '功能分类',
+    quickActions: [
+      { id: 'drives', label: '行程记录', icon: Route },
+      { id: 'charges', label: '充电记录', icon: BatteryCharging },
+      { id: 'tracks', label: '地图轨迹', icon: Map },
+      { id: 'alerts', label: '异常提醒', icon: AlertTriangle },
+      { id: 'journey', label: '行程日历', icon: Navigation },
+      { id: 'battery', label: '电池健康', icon: Battery },
+      { id: 'tires', label: '胎压/安全', icon: ShieldCheck },
+      { id: 'stats', label: '驾驶统计', icon: Gauge },
+    ],
+    cards: {
+      batteryStatus: '电池状态',
+      range: '续航里程',
+      state: '车辆状态',
+      location: '车辆位置',
+      inside: '车内温度',
+      outside: '外界温度',
+      monthlyMileage: '月度里程',
+      thisMonth: '本月',
+      lastMonth: '上月',
+      latestTrip: '最近行程',
+      latestCharge: '最近充电',
+      distance: '里程',
+      duration: '用时',
+      started: '开始时间',
+      energy: '充电量',
+      cost: '费用',
+      noTrip: '暂无行程数据',
+      noCharge: '暂无充电数据',
+      driveDistance: '7 日行驶里程',
+      chargingTrend: '14 日充电趋势',
+      recentDrives: '近期行程',
+      chargingSessions: '近期充电',
+    },
+    empty: {
+      noDriveData: '暂无驾驶数据',
+      noTrips: '暂无行程记录',
+      noCharging: '暂无充电数据',
+      noChargingHistory: '暂无充电记录',
+    },
+    buttons: {
+      language: 'EN / 中文',
+    },
+    labels: {
+      route: '路线',
+      odometer: '总里程',
+      version: '版本',
+      speed: '车速',
+      km: '公里',
+      min: '分钟',
+      kwh: '千瓦时',
+      currency: '¥',
+    },
+  },
+};
+
 const fetchGrafanaData = async (sqlString) => {
   try {
     let response;
@@ -84,30 +270,31 @@ const fetchGrafanaData = async (sqlString) => {
         body: JSON.stringify({ sql: sqlString }),
       });
     } else {
-      // 直接请求模式（一般不推荐）
       response = await fetch(`${CONFIG.TESLAMATE_URL}/api/ds/query`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${CONFIG.TOKEN}`,
-          'Accept': 'application/json'
+          Authorization: `Bearer ${CONFIG.TOKEN}`,
+          Accept: 'application/json',
         },
         body: JSON.stringify({
-          queries: [{
-            refId: "A",
-            datasource: { type: "postgres", uid: CONFIG.DATASOURCE_UID },
-            rawSql: sqlString,
-            format: "table"
-          }],
-          from: "now-6h",
-          to: "now"
-        })
+          queries: [
+            {
+              refId: 'A',
+              datasource: { type: 'postgres', uid: CONFIG.DATASOURCE_UID },
+              rawSql: sqlString,
+              format: 'table',
+            },
+          ],
+          from: 'now-6h',
+          to: 'now',
+        }),
       });
     }
 
     if (!response.ok) {
       if (response.status === 401) {
-        throw new Error("Authentication Failed (401): Invalid Token. Please check NEXT_PUBLIC_GRAFANA_TOKEN.");
+        throw new Error('Authentication Failed (401): Invalid Token. Please check NEXT_PUBLIC_GRAFANA_TOKEN.');
       }
       throw new Error(`HTTP Error: ${response.status}`);
     }
@@ -116,7 +303,7 @@ const fetchGrafanaData = async (sqlString) => {
     if (data.error) throw new Error(data.error);
     return data;
   } catch (error) {
-    console.error("Data Fetch Error:", error);
+    console.error('Data Fetch Error:', error);
     throw error;
   }
 };
@@ -144,8 +331,8 @@ const ConnectionStatus = ({ status, error }) => {
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-400 text-xs rounded-full">
         <Wifi size={12} />
-        <span className="hidden sm:inline">Connected</span>
-        <span className="sm:hidden">On</span>
+        <span className="hidden sm:inline">{translate('connection.connected')}</span>
+        <span className="sm:hidden">{translate('connection.on')}</span>
       </div>
     );
   }
@@ -154,30 +341,28 @@ const ConnectionStatus = ({ status, error }) => {
     return (
       <div className="group relative flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-full cursor-help">
         {isAuthError ? <Lock size={12} /> : <AlertTriangle size={12} />}
-        <span className="hidden sm:inline">{isAuthError ? "Auth Failed" : "Connection Failed"}</span>
-        <span className="sm:hidden">Error</span>
+        <span className="hidden sm:inline">{isAuthError ? translate('connection.authFailed') : translate('connection.failed')}</span>
+        <span className="sm:hidden">{translate('connection.failed')}</span>
         <div className="absolute top-full right-0 mt-2 w-80 p-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl text-zinc-300 z-50 hidden group-hover:block">
           <div className="font-bold text-white mb-2 flex items-center gap-2">
-            <Server size={14}/> 
-            {isAuthError ? "Authentication Error" : "Connection Error"}
+            <Server size={14} />
+            {isAuthError ? translate('connection.authTitle') : translate('connection.errorTitle')}
           </div>
           <div className="text-xs font-mono bg-black/50 p-2 rounded mb-3 break-all border border-red-500/30 text-red-300">
-            {error?.message || "Unknown Error"}
+            {error?.message || 'Unknown Error'}
           </div>
           {isAuthError ? (
             <div className="text-xs text-zinc-400 space-y-2">
-              <p className="font-medium text-white">How to fix 401 Error:</p>
+              <p className="font-medium text-white">{translate('connection.authTitle')}</p>
               <ol className="list-decimal pl-4 space-y-1">
-                <li>The Token provided is incorrect or expired.</li>
-                <li>Go to Grafana ({CONFIG.TESLAMATE_URL})</li>
-                <li>Navigate to Configuration -&gt; Service Accounts</li>
-                <li>Create a new Service Account &amp; Token</li>
-                <li>Update <code className="bg-zinc-800 px-1 rounded">NEXT_PUBLIC_GRAFANA_TOKEN</code> in <code className="bg-zinc-800 px-1 rounded">.env.local</code></li>
+                {translate('connection.helpSteps').map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
               </ol>
             </div>
           ) : (
             <p className="text-xs text-zinc-500">
-              Check your network connection to {CONFIG.TESLAMATE_URL}
+              {translate('connection.networkHint')} {CONFIG.TESLAMATE_URL}
             </p>
           )}
         </div>
@@ -187,12 +372,13 @@ const ConnectionStatus = ({ status, error }) => {
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs rounded-full">
       <RefreshCw size={12} className="animate-spin" />
-      <span className="hidden sm:inline">Connecting...</span>
+      <span className="hidden sm:inline">{translate('connection.connecting')}</span>
+      <span className="sm:hidden">{translate('connection.connecting')}</span>
     </div>
   );
 };
 
-const Card = ({ children, className = "", title, subtitle, icon: Icon }) => (
+const Card = ({ children, className = '', title, subtitle, icon: Icon }) => (
   <div className={`bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-2xl p-6 ${className} transition-all duration-300 hover:border-zinc-700 hover:bg-zinc-900/80`}>
     {(title || Icon) && (
       <div className="flex justify-between items-start mb-4">
@@ -207,24 +393,41 @@ const Card = ({ children, className = "", title, subtitle, icon: Icon }) => (
   </div>
 );
 
-const StatBadge = ({ icon: Icon, label, value, unit, color = "text-zinc-100" }) => (
-  <div className="flex flex-col">
-    <div className="flex items-center gap-2 text-zinc-400 text-sm mb-1">
+const ProgressBar = ({ value, color = 'bg-blue-500' }) => (
+  <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
+    <div className={`h-full ${color} transition-all duration-1000 ease-out`} style={{ width: `${value}%` }} />
+  </div>
+);
+
+const StatRow = ({ icon: Icon, label, value, suffix }) => (
+  <div className="flex items-center justify-between py-1.5">
+    <div className="flex items-center gap-2 text-sm text-zinc-400">
       <Icon size={14} />
       <span>{label}</span>
     </div>
-    <div className={`text-xl font-semibold ${color}`}>
-      {value} <span className="text-sm font-normal text-zinc-500">{unit}</span>
+    <div className="text-zinc-100 font-medium">
+      {value}
+      {suffix && <span className="text-zinc-500 text-sm ml-1">{suffix}</span>}
     </div>
   </div>
 );
 
-const ProgressBar = ({ value, color = "bg-blue-500" }) => (
-  <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
-    <div 
-      className={`h-full ${color} transition-all duration-1000 ease-out`} 
-      style={{ width: `${value}%` }}
-    />
+const QuickActionGrid = ({ items }) => (
+  <div className="grid grid-cols-4 gap-3">
+    {items.map((item) => {
+      const Icon = item.icon;
+      return (
+        <div
+          key={item.id}
+          className="flex flex-col items-center gap-2 bg-zinc-900/70 border border-zinc-800 rounded-xl py-4 hover:border-zinc-700 transition-colors text-center"
+        >
+          <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-blue-400">
+            <Icon size={18} />
+          </div>
+          <span className="text-sm text-zinc-200 leading-tight">{item.label}</span>
+        </div>
+      );
+    })}
   </div>
 );
 
@@ -424,7 +627,7 @@ const ChargingView = ({ chargingSummary, chargingHistory, recentCharges }) => {
                   <td className="py-3 text-zinc-300">{session.energy !== undefined ? `${session.energy} kWh` : '—'}</td>
                   <td className="py-3 text-right pr-2 text-zinc-300">{session.cost !== undefined ? `¥ ${session.cost}` : '—'}</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -463,6 +666,7 @@ export default function App() {
           END as status
         FROM cars c
         JOIN positions p ON p.car_id = c.id
+        LEFT JOIN addresses a ON p.address_id = a.id
         ORDER BY p.date DESC LIMIT 1;
       `;
       try {
@@ -477,20 +681,20 @@ export default function App() {
           const speed = values[4]?.[0];
           const inside = values[5]?.[0];
           const outside = values[6]?.[0];
-          const status = values[7]?.[0];
+          const location = values[7]?.[0];
+          const status = values[8]?.[0];
 
           setCarStatus({
-            name: name || "Tesla",
-            state: status || "unknown",
+            name: name || 'Tesla',
+            state: status || 'unknown',
             batteryLevel: battery || 0,
             range: `${Math.round(range || 0)} km`,
             odometer: `${Math.round(odometer || 0).toLocaleString()} km`,
-            // TeslaMate 的 cars 表没有 version 字段，这里用占位
-            version: "---",
-            location: "Location Hidden",
+            version: '---',
+            location: location || 'Unknown',
             speed: speed || 0,
             inside_temp: inside || 0,
-            outside_temp: outside || 0
+            outside_temp: outside || 0,
           });
           setConnectionStatus('connected');
           setConnectionError(null);
@@ -502,10 +706,7 @@ export default function App() {
         setConnectionStatus('error');
         setCarStatus({
           ...DEFAULT_CAR_STATUS,
-          name: "Model 3 (Mock)",
-          batteryLevel: 78,
-          range: "385 km",
-          state: "online"
+          state: 'offline',
         });
       }
 
@@ -655,8 +856,8 @@ export default function App() {
     <button
       onClick={() => setActiveTab(id)}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-        activeTab === id 
-          ? 'bg-blue-600/10 text-blue-400 font-medium' 
+        activeTab === id
+          ? 'bg-blue-600/10 text-blue-400 font-medium'
           : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'
       }`}
     >
@@ -675,30 +876,36 @@ export default function App() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-red-600 to-red-500 flex items-center justify-center shadow-lg shadow-red-900/20">
               <Zap className="text-white" size={16} />
             </div>
-            <span className="font-bold text-xl tracking-tight">Tesla<span className="font-normal text-zinc-400">Mate</span></span>
+            <div className="flex flex-col">
+              <span className="font-bold text-xl tracking-tight">{translate('brand')}</span>
+              <span className="text-xs text-zinc-500">{translate('frameworkSubtitle')}</span>
+            </div>
           </div>
 
           <nav className="flex-1 px-4 space-y-2 mt-4">
-            <NavItem id="dashboard" icon={Layers} label="Dashboard" />
-            <NavItem id="charging" icon={BatteryCharging} label="Charging" />
+            <NavItem id="dashboard" icon={Layers} label={translate('nav.dashboard')} />
+            <NavItem id="charging" icon={BatteryCharging} label={translate('nav.charging')} />
           </nav>
 
-          <div className="p-4 border-t border-zinc-800">
-            <button className="flex items-center gap-3 text-zinc-400 hover:text-white transition-colors w-full px-4 py-2">
-              <Settings size={20} />
-              <span>Settings</span>
+          <div className="p-4 border-t border-zinc-800 space-y-2">
+            <button
+              onClick={() => setLanguage((prev) => (prev === 'en' ? 'zh' : 'en'))}
+              className="flex items-center justify-center gap-3 text-zinc-400 hover:text-white transition-colors w-full px-4 py-2 bg-zinc-900 rounded-xl border border-zinc-800"
+            >
+              <Settings size={18} />
+              <span>{translate('buttons.language')}</span>
             </button>
           </div>
         </aside>
 
         <main className="flex-1 overflow-y-auto md:p-8 p-4">
-          <header className="flex justify-between items-center mb-8">
+          <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
             <div>
-              <h2 className="text-2xl font-bold capitalize">{activeTab}</h2>
-              <p className="text-zinc-400 text-sm">Overview of your vehicle statistics</p>
+              <h2 className="text-2xl font-bold capitalize">{translate(`nav.${activeTab}`)}</h2>
+              <p className="text-zinc-400 text-sm">{translate('frameworkSubtitle')}</p>
             </div>
-            <div className="flex items-center gap-4">
-              <ConnectionStatus status={connectionStatus} error={connectionError} />
+            <div className="flex items-center gap-3 flex-wrap">
+              <ConnectionStatus status={connectionStatus} error={connectionError} translate={translate} />
               <span className="text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-1 rounded border border-zinc-800 hidden md:block">
                 {proxyLabel}
               </span>

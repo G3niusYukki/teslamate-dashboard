@@ -1,7 +1,34 @@
+import fs from 'fs';
+import path from 'path';
 import { NextResponse } from 'next/server';
 
 interface ProxyBody {
   sql: string;
+}
+
+function readTokenFromFile(): string {
+  const candidates = ["token", "token.txt", "token.env"];
+  for (const filename of candidates) {
+    const fullPath = path.join(process.cwd(), filename);
+    if (fs.existsSync(fullPath)) {
+      try {
+        const fileToken = fs.readFileSync(fullPath, "utf8").trim();
+        if (fileToken) return fileToken;
+      } catch (err) {
+        console.warn(`[Proxy] Failed to read token file ${filename}:`, err);
+      }
+    }
+  }
+  return "";
+}
+
+function resolveToken(): string {
+  if (process.env.NEXT_PUBLIC_GRAFANA_TOKEN) {
+    return process.env.NEXT_PUBLIC_GRAFANA_TOKEN;
+  }
+  const fileToken = readTokenFromFile();
+  if (fileToken) return fileToken;
+  return "";
 }
 
 export async function POST(request: Request) {
@@ -11,18 +38,25 @@ export async function POST(request: Request) {
 
     // 写死的默认配置（可以根据需要直接改成你自己的）
     const grafanaUrl =
-      process.env.NEXT_PUBLIC_GRAFANA_URL || "http://108.175.9.151:3001";
-    // 这里写死你的 Grafana API Token（如需更换，直接改这一行）
-    const token =
-      process.env.NEXT_PUBLIC_GRAFANA_TOKEN ||
-      "glsa_ahLNsZemMuXPekIjQ1vjwA8pqzKxREm2_d07ea710";
+      process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001";
+    const token = resolveToken();
     // 使用你给出的 UID，确保能找到正确的数据源
     const datasourceUid =
-      process.env.NEXT_PUBLIC_DATASOURCE_UID || "PC98BA2F4D77E1A42";
+      process.env.NEXT_PUBLIC_DATASOURCE_UID || "YOUR_DATASOURCE_UID";
 
     if (!grafanaUrl) {
       return NextResponse.json(
         { error: "Missing Grafana URL, please set grafanaUrl in proxy route" },
+        { status: 500 },
+      );
+    }
+
+    if (!token) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing Grafana token. Please set NEXT_PUBLIC_GRAFANA_TOKEN or place it in a token/token.txt file.",
+        },
         { status: 500 },
       );
     }
